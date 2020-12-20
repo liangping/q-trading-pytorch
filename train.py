@@ -22,17 +22,18 @@ for e in range(episode_count + 1):
 	agent.inventory = []
 
 	for t in range(l):
-		action = agent.act(state)
+		# action = agent.act(state)
+		action = agent.select_action(state)
 
 		# sit
 		next_state = getState(data, t + 1, window_size + 1)
 		reward = 0
 
-		if action == 1: # buy
+		if action == 1:  # buy
 			agent.inventory.append(data[t])
 			# print("Buy: " + formatPrice(data[t]))
 
-		elif action == 2 and len(agent.inventory) > 0: # sell
+		elif action == 2 and len(agent.inventory) > 0:  # sell
 			bought_price = agent.inventory.pop(0)
 			reward = max(data[t] - bought_price, 0)
 			total_profit += data[t] - bought_price

@@ -1,3 +1,5 @@
+import math
+
 from agent.memory import Transition, ReplayMemory
 from agent.model import DQN
 
@@ -13,15 +15,16 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Agent:
 	def __init__(self, state_size, is_eval=False):
-		self.state_size = state_size # normalized previous days
-		self.action_size = 3 # sit, buy, sell
+		self.state_size = state_size  # normalized previous days
+		self.action_size = 3  # sit, buy, sell
 		self.memory = ReplayMemory(10000)
 		self.inventory = []
 		self.is_eval = is_eval
+		self.steps_done = 0
 
 		self.gamma = 0.95
-		self.epsilon = 1.0
-		self.epsilon_min = 0.01
+		self.epsilon = 1.0  # Start
+		self.epsilon_min = 0.01  # END
 		self.epsilon_decay = 0.995
 		self.batch_size = 32
 		if os.path.exists('models/target_model'):
@@ -31,6 +34,25 @@ class Agent:
 			self.policy_net = DQN(state_size, self.action_size)
 			self.target_net = DQN(state_size, self.action_size)
 		self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=0.005, momentum=0.9)
+
+
+
+	def select_action(self, state):
+
+		sample = random.random()
+		eps_threshold = self.epsilon_min + (self.epsilon - self.epsilon_min) * \
+						math.exp(-1. * self.steps_done / self.epsilon_decay)
+		self.steps_done += 1
+		if sample > eps_threshold:
+			with torch.no_grad():
+				# t.max(1) will return largest column value of each row.
+				# second column on max result is index of where max element was
+				# found, so we pick action with the larger expected reward.
+				# return self.policy_net(state).max(1)[1].view(1, 1)
+				return self.policy_net(torch.tensor(state, dtype=torch.float32)).max(1)[1].view(1, 1).item()
+		else:
+			return torch.tensor([[random.randrange(self.action_size)]], device=device, dtype=torch.long).item()
+
 
 	def act(self, state):
 		if not self.is_eval and np.random.rand() <= self.epsilon:
@@ -42,7 +64,7 @@ class Agent:
 
 	def optimize(self):
 		if len(self.memory) < self.batch_size:
-				return
+			return
 		transitions = self.memory.sample(self.batch_size)
 		# Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
 		# detailed explanation). This converts batch-array of Transitions
@@ -80,5 +102,5 @@ class Agent:
 		self.optimizer.zero_grad()
 		loss.backward()
 		for param in self.policy_net.parameters():
-				param.grad.data.clamp_(-1, 1)
+			param.grad.data.clamp_(-1, 1)
 		self.optimizer.step()

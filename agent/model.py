@@ -6,11 +6,11 @@ class DQN(nn.Module):
 		super(DQN, self).__init__()
 		self.main = nn.Sequential(
 			nn.Linear(state_size, 64),
-			nn.LeakyReLU(0.01, inplace=True),
+			nn.ReLU(inplace=True),
 			nn.Linear(64, 32),
-			nn.LeakyReLU(0.01, inplace=True),
+			nn.ReLU(inplace=True),
 			nn.Linear(32, 8),
-			nn.LeakyReLU(0.01, inplace=True),
+			nn.ReLU(inplace=True),
 			nn.Linear(8, action_size),
 		)
 	

@@ -9,17 +9,20 @@ from agent.agent import Agent
 from functions import *
 
 stock_name = '^HSI_2018'
+#stock_name = "btc"
 window_size = 10
 
 agent = Agent(window_size, True)
 data = getStockDataVec(stock_name)
-l = len(data) - 1
+ls = len(data) - 1
 batch_size = 32
 episode_count = 1000
 
 closes = []
 buys = []
 sells = []
+
+abcd = 0
 
 for e in range(episode_count):
 	closes = []
@@ -29,16 +32,18 @@ for e in range(episode_count):
 	total_profit = 0
 	agent.inventory = []
 	capital = 100000
-	for t in range(l):
-		#action = agent.act(state)
-		action = np.random.randint(0, 3)
+	for t in range(ls):
+		action = agent.act(state)
+		# print(action)
+		# action = agent.select_action(state)
+		# action = np.random.randint(0, 3)
 		closes.append(data[t])
 
 		# sit
 		next_state = getState(data, t + 1, window_size + 1)
 		reward = 0
 
-		if action == 1: # buy
+		if action == 1:  # buy
 			if capital > data[t]:
 				agent.inventory.append(data[t])
 				buys.append(data[t])
@@ -48,7 +53,7 @@ for e in range(episode_count):
 				buys.append(None)
 				sells.append(None)
 
-		elif action == 2: # sell
+		elif action == 2:  # sell
 			if len(agent.inventory) > 0:
 				bought_price = agent.inventory.pop(0)
 				reward = max(data[t] - bought_price, 0)
@@ -63,7 +68,7 @@ for e in range(episode_count):
 			buys.append(None)
 			sells.append(None)
 
-		done = True if t == l - 1 else False
+		done = True if t == ls - 1 else False
 		agent.memory.push(state, action, next_state, reward)
 		state = next_state
 
@@ -71,3 +76,6 @@ for e in range(episode_count):
 			print("--------------------------------")
 			print(stock_name + " Total Profit: " + formatPrice(total_profit))
 			print("--------------------------------")
+			abcd += total_profit
+
+print("result: " + formatPrice(abcd))
