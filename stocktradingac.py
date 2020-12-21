@@ -7,20 +7,19 @@ Original file is located at
     https://colab.research.google.com/github/nandahkrishna/StockTrading/blob/master/TradingActorCritic.ipynb
 """
 
-import os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-import math, random
 from scipy import signal
 import torch
-import torch.nn as nn
 import torch.optim as optim
-import torch.autograd as autograd
 import torch.nn.functional as F
-from torch.distributions import Categorical
+
+from ac.environment import Environment
+from ac.policy import Policy
 
 torch.manual_seed(20)
+torch.set_default_tensor_type(torch.DoubleTensor)
 
 # df = pd.read_csv('aapl.us.txt').iloc[6000:8001]
 df = pd.read_csv('data/^GSPC.csv')
@@ -39,157 +38,7 @@ print(apl_open.min(), apl_close.min())
 apl_open_orig = np.array(df['Open'])
 apl_close_orig = np.array(df['Close'])
 
-
-class Environment:
-    def __init__(self, starting_cash=200, randomize_cash=0, starting_shares=0,
-                 randomize_shares=0, max_stride=5, series_length=200,
-                 starting_point=0, inaction_penalty=0):
-        self.starting_cash = starting_cash
-        self.randomize_cash = randomize_cash
-        self.starting_shares = starting_shares
-        self.randomize_shares = randomize_shares
-        
-        self.starting_cash = max(int(np.random.normal(self.starting_cash, self.randomize_cash)), 0)
-        self.series_length = series_length
-        self.starting_point = starting_point
-        self.cur_timestep = self.starting_point
-        
-        self.state = torch.FloatTensor(torch.zeros(5)).cuda()
-        self.state[0] = max(int(np.random.normal(self.starting_shares, self.randomize_shares)), 0)
-        self.state[1] = self.starting_cash
-        self.state[2] = apl_open[self.cur_timestep]
-        self.starting_portfolio_value = self.portfolio_value()
-        self.state[3] = self.starting_portfolio_value
-        self.state[4] = self.five_day_window()
-        
-        self.max_stride = max_stride
-        self.stride = self.max_stride
-        
-        self.done = False
-        self.inaction_penalty = inaction_penalty
-        
-    def portfolio_value(self):
-        return ((self.state[0] * apl_close[self.cur_timestep]) + self.state[1])
-    
-    def next_opening_price(self):
-        next_timestep = self.cur_timestep + self.stride
-        return apl_open[next_timestep]
-    
-    def five_day_window(self):
-        step = self.cur_timestep
-        if step < 5:
-            return apl_open[0]
-        apl5 = apl_open[step-5:step].mean()
-        return apl5
-    
-    def step(self, action):
-        action = [action, 1]
-        cur_timestep = self.cur_timestep
-        ts_left = self.series_length - (cur_timestep - self.starting_point)
-        retval = None
-        cur_value = self.portfolio_value()
-        gain = cur_value - self.starting_portfolio_value
-        
-        if cur_timestep >= self.starting_point + self.series_length * self.stride:
-            next_opening = self.next_opening_price()
-            next_five_day = self.five_day_window()
-            new_state = [self.state[0], self.state[1], next_opening, cur_value, next_five_day]
-            self.state = new_state
-            return new_state, cur_value + gain, True, {'msg': 'done'}
-        
-        if action[0] == 2:
-            next_opening = self.next_opening_price()
-            next_five_day = self.five_day_window()
-            new_state = [self.state[0], self.state[1], next_opening, cur_value, next_five_day]
-            self.state = new_state
-            retval = new_state, gain - self.inaction_penalty - ts_left, False, {'msg': 'nothing'}
-            
-        if action[0] == 0:
-            if action[1] * apl_open[cur_timestep] > self.state[1]:
-                next_opening = self.next_opening_price()
-                next_five_day = self.five_day_window()
-                new_state = [self.state[0], self.state[1], next_opening, cur_value, next_five_day]
-                self.state = new_state
-                retval = new_state, -ts_left + gain / 2, True, {'msg': 'bankrupt'}
-            else:
-                apl_shares = self.state[0] + action[1]
-                cash_spent = action[1] * apl_open[cur_timestep] * 1.1
-                next_opening = self.next_opening_price()
-                next_five_day = self.five_day_window()
-                new_state = [apl_shares, self.state[1] - cash_spent, next_opening, cur_value, next_five_day]
-                self.state = new_state
-                retval = new_state, gain + self.inaction_penalty - ts_left, False, {'msg': 'bought stocks'}
-                
-        if action[0] == 1:
-            if action[1] > self.state[0]:
-                next_opening = self.next_opening_price()
-                next_five_day = self.five_day_window()
-                new_state = [self.state[0], self.state[1], next_opening, cur_value, next_five_day]
-                self.state = new_state
-                retval = new_state, -ts_left + gain / 2, True, {'msg': 'sold more than available'}
-            else:
-                apl_shares = self.state[0] - action[1]
-                cash_gained = action[1] * apl_open[cur_timestep] * 0.9
-                next_opening = self.next_opening_price()
-                next_five_day = self.five_day_window()
-                new_state = [apl_shares, self.state[1] + cash_gained, next_opening, cur_value, next_five_day]
-                self.state = new_state
-                retval = new_state, gain + self.inaction_penalty - ts_left, False, {'msg': 'sold stocks'}
-                
-        self.cur_timestep += self.stride
-        return retval
-    
-    def reset(self):
-        self.starting_cash = max(int(np.random.normal(self.starting_cash, self.randomize_cash)), 0.)
-        self.cur_timestep = self.starting_point
-        
-        self.state[0] = max(int(np.random.normal(self.starting_shares, self.randomize_shares)), 0)
-        self.state[1] = self.starting_cash
-        self.state[2] = apl_open[self.cur_timestep]
-        self.state[3] = self.starting_portfolio_value
-        self.state[4] = self.five_day_window()
-        
-        self.done = False
-        return self.state
-
-
-class Policy(nn.Module):
-    def __init__(self):
-        super(Policy, self).__init__()
-        self.input_layer = nn.Linear(5, 128)
-        self.hidden_1 = nn.Linear(128, 128)
-        self.hidden_2 = nn.Linear(32, 31)
-        self.hidden_state = torch.tensor(torch.zeros(2, 1, 32)).cuda()
-        self.rnn = nn.GRU(128, 32, 2)
-        self.action_head = nn.Linear(31, 3)
-        self.value_head = nn.Linear(31, 1)
-        self.saved_actions = []
-        self.rewards = []
-        
-    def reset_hidden(self):
-        self.hidden_state = torch.tensor(torch.zeros(2, 1, 32)).cuda()
-        
-    def forward(self, x):
-        x = torch.tensor(x).cuda()
-        x = torch.sigmoid(self.input_layer(x))
-        x = torch.tanh(self.hidden_1(x))
-        x, self.hidden_state = self.rnn(x.view(1, -1, 128), self.hidden_state.data)
-        x = F.relu(self.hidden_2(x.squeeze()))
-        action_scores = self.action_head(x)
-        state_values = self.value_head(x)
-        return F.softmax(action_scores, dim=-1), state_values
-    
-    def act(self, state):
-        probs, state_value = self.forward(state)
-        m = Categorical(probs)
-        action = m.sample()
-        if action == 1 and state[0] < 1:
-            action = torch.LongTensor([2]).squeeze().cuda()
-        self.saved_actions.append((m.log_prob(action), state_value))
-        return action.item()
-
-
-env = Environment(starting_cash=1000, randomize_cash=100, starting_shares=100, 
+env = Environment(open=apl_open, close=apl_close, starting_cash=1000, randomize_cash=100, starting_shares=100,
                   randomize_shares=10, max_stride=4, series_length=499)
 model = Policy().cuda()
 optimizer = optim.Adam(model.parameters(), lr=4e-4)
@@ -217,8 +66,8 @@ def finish_episode():
     rewards += epsilon
     
     for (log_prob, value), r in zip(saved_actions, rewards):
-        reward = torch.tensor(r - value.item()).cuda()
-        policy_losses.append(-log_prob * reward)
+        a_reward = torch.tensor(r - value.item()).cuda()
+        policy_losses.append(-log_prob * a_reward)
         value_losses.append(F.smooth_l1_loss(value, torch.tensor([r]).cuda()))
         
     optimizer.zero_grad()
