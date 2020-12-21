@@ -13,6 +13,7 @@ import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+
 class Agent:
 	def __init__(self, state_size, is_eval=False):
 		self.state_size = state_size  # normalized previous days
@@ -35,8 +36,6 @@ class Agent:
 			self.target_net = DQN(state_size, self.action_size)
 		self.optimizer = optim.RMSprop(self.policy_net.parameters(), lr=0.005, momentum=0.9)
 
-
-
 	def select_action(self, state):
 
 		sample = random.random()
@@ -52,7 +51,6 @@ class Agent:
 				return self.policy_net(torch.tensor(state, dtype=torch.float32)).max(1)[1].view(1, 1).item()
 		else:
 			return torch.tensor([[random.randrange(self.action_size)]], device=device, dtype=torch.long).item()
-
 
 	def act(self, state):
 		if not self.is_eval and np.random.rand() <= self.epsilon:
