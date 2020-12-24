@@ -4,15 +4,17 @@ import matplotlib.pyplot as plt
 import mplfinance as mpf
 import requests
 import pandas as pd
+import numpy as np
 
 
 def fetch_data():
     store = "data/btc.csv"
     if os.path.isfile(store):
         # sss
-        data1 = pd.read_csv(store)
-        data1['Date'] = pd.to_datetime(data1['Date'], format="%Y-%m-%d")
-        data1.set_index("Date", inplace=True)
+        data1 = pd.read_csv(store, index_col=0, parse_dates=True)
+        data1.shape
+        # data1['Date'] = pd.to_datetime(data1['Date'], format="%Y-%m-%d")
+        # data1.set_index("Date", inplace=True)
         return data1
     else:
         host = "https://api3.binance.com";
@@ -21,8 +23,8 @@ def fetch_data():
 
         text = response.json()
         data = pd.DataFrame.from_dict(data=text, orient="columns")
-        data.columns = ["Date", "Open", "High", "Low", "Close", "Volume", "close_time", "volumes", "orders", "buy", "buy",
-                        "other"]
+        data.columns = ["Date", "Open", "High", "Low", "Close", "Volume", "close_time", "volumes", "orders", "buy",
+                        "sell", "other"]
 
         data['Date'] = pd.to_datetime(data['Date'], unit="ms")
         data['Open'] = pd.to_numeric(data['Open'])
@@ -37,61 +39,49 @@ def fetch_data():
         return data
 
 
-def show(data):
+def show(df):
 
-    print(data.head(3))
+    buy, sell = label(df)
+    df['buy'] = buy
+    df['sell'] = sell
 
-    fig, ax = plt.subplots(figsize=(1200/72, 480/72))
-    fig.subplots_adjust(bottom=0.1)
-    apdict = mpf.make_addplot(data['Low'])
-    #mpf.plot(data, type="candle", volume=True, style="binance")
-    mpf.plot(data, volume=True, addplot=apdict, style="binance")
-    #mpf.plot(data, type="renko")
-    ax.grid(True)
-    ax.xaxis_date()
-    plt.show()
+    print(df.head(3))
+
+    apd = [
+        mpf.make_addplot(df['buy'], type="scatter", scatter=True, markersize=20, marker='^'),
+        mpf.make_addplot(df['sell'], type="scatter", scatter=True, markersize=20),
+    ]
+    mpf.plot(df, type="candle", volume=True, addplot=apd, style="sas")
+    mpf.show()
+    # plot.show()
 
 
-def lablel(data):
+def label(price):
 
-    print(len(data))
+    # buy = pd.DataFrame(columns=('Date', 'other'))
+    buy = []
+    sell = []
+
     highest = 0
-    h_i = 0
     lowest = 0
-    l_i = 0
-    for i in range(len(data)):
-        row = data.iloc[i]
-        if highest < row["High"]:
-            highest = row["High"]
-            h_i = i
-        if h_i+1 == i:
-            lowest = row["Low"]
-            print(i, " High:", highest)
-        if lowest > row["Low"]:
-            lowest = row["Low"]
-            l_i = i
-        if l_i+1 == i:
-            highest = row["High"]
-            print(i, " lowest:", lowest)
-
-    #print("High:", highest, " lowest:", lowest)
-
-
-def percentB_aboveone(percentB, price):
-    import numpy as np
-    signal = []
-    previous = 2
-    for date, value in percentB.iteritems():
-        if not value <= 1 and previous <= 1:
-            signal.append(price[date]*1.01)
+    index = 0
+    for date, p in price['Close'].iteritems():
+        index += 1
+        if index % 5 == 0:
+            buy.append(p * 0.98)
         else:
-            signal.append(np.nan)
-        previous = value
-    return signal
+            buy.append(np.nan)
+
+        if index % 7 == 0:
+            sell.append(p * 1.02)
+        else:
+            sell.append(np.nan)
+
+    return buy, sell
 
 
 if __name__ == '__main__':
 
-    data = fetch_data()
-    show(data)
-    #lablel(data)
+    x = fetch_data()
+    show(x)
+    # l_b, l_s = lablel(x)
