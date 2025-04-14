@@ -1,6 +1,5 @@
+import math
 import os
-
-import matplotlib.pyplot as plt
 import mplfinance as mpf
 import requests
 import pandas as pd
@@ -8,17 +7,17 @@ import numpy as np
 
 
 def fetch_data():
-    store = "data/btc.csv"
+    store = "data/eth-210704.csv"
     if os.path.isfile(store):
         # sss
         data1 = pd.read_csv(store, index_col=0, parse_dates=True)
-        data1.shape
+        # data1.shape
         # data1['Date'] = pd.to_datetime(data1['Date'], format="%Y-%m-%d")
         # data1.set_index("Date", inplace=True)
         return data1
     else:
         host = "https://api3.binance.com";
-        params = {"symbol": "BTCUSDT", "interval": "1d", "limit": 500}
+        params = {"symbol": "ETHUSDT", "interval": "1d", "limit": 500}
         response = requests.get(host + "/api/v3/klines", params)
 
         text = response.json()
@@ -39,49 +38,83 @@ def fetch_data():
         return data
 
 
-def show(df):
+def show(df, buy, sell):
 
-    buy, sell = label(df)
     df['buy'] = buy
     df['sell'] = sell
 
     print(df.head(3))
 
-    apd = [
-        mpf.make_addplot(df['buy'], type="scatter", scatter=True, markersize=20, marker='^'),
-        mpf.make_addplot(df['sell'], type="scatter", scatter=True, markersize=20),
-    ]
-    mpf.plot(df, type="candle", volume=True, addplot=apd, style="sas")
+    # apd = [
+    #     mpf.make_addplot(df['buy'], type="scatter", scatter=True, markersize=50, marker='^'),
+    #     mpf.make_addplot(df['sell'], type="scatter", scatter=True, markersize=50, marker='v'),
+    # ]
+    mpf.plot(df, type="candle", volume=True, style="binance")
     mpf.show()
     # plot.show()
 
 
 def label(price):
 
-    # buy = pd.DataFrame(columns=('Date', 'other'))
-    buy = []
-    sell = []
-
-    highest = 0
-    lowest = 0
     index = 0
-    for date, p in price['Close'].iteritems():
-        index += 1
-        if index % 5 == 0:
-            buy.append(p * 0.98)
-        else:
-            buy.append(np.nan)
+    buy, sell, seq, last = [], [], [], []
 
-        if index % 7 == 0:
-            sell.append(p * 1.02)
-        else:
-            sell.append(np.nan)
+    for date, p in price.iterrows():
+        index += 1
+        mean = p['Open':'Close'].mean()
+        seq.append(mean)
+        buy.append(np.nan)
+        sell.append(np.nan)
+
+        if len(seq) > 2:
+            print(seq[index-3], seq[index-2], mean, p['Open':'Close'].std())
+            if seq[index-3] - seq[index-2] > 0 and mean - seq[index-2] > 0:
+                buy[index-2] = last['Low']
+
+            if seq[index-3] - seq[index-2] < 0 and mean - seq[index-2] < 0:
+                sell[index-2] = last['High']
+
+        last = p
+
+    length = len(buy)
+    for i in range(length):
+        if not math.isnan(buy[i]) and not math.isnan(sell[i+1]):
+            buy[i] = np.nan
+            if i < length:
+                sell[i+1] = np.nan
+        if not math.isnan(sell[i]) and not math.isnan(buy[i+1]):
+            sell[i] = np.nan
+            if i < length:
+                buy[i+1] = np.nan
 
     return buy, sell
+
+
+def convert_to_label(buy, sell):
+
+    _y = []
+    for i in range(len(buy)):
+        if not math.isnan(buy[i]):
+            _y.append(1)
+        elif not math.isnan(sell[i]):
+            _y.append(2)
+        else:
+            _y.append(0)
+
+    return _y
+
+
+def slope(seq):
+    pos = len(seq)
+    if pos > 2:
+        seq[pos]-seq[pos-1] > 0
 
 
 if __name__ == '__main__':
 
     x = fetch_data()
-    show(x)
-    # l_b, l_s = lablel(x)
+    # signal_buy, signal_sell = label(x)
+    # #print(signal_buy)
+    # #print(signal_sell)
+    # # print(convert_to_label(signal_buy, signal_sell))
+    # show(x, signal_buy, signal_sell)
